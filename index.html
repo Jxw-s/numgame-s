@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>策略阶梯 · 心跳惩罚</title>
+    <title>数字阶梯</title>
     <style>
         * { box-sizing: border-box; }
         body { text-align: center; font-family: 'Segoe UI', Arial; background: #0b0e14; color: #eee; padding: 20px; min-height: 100vh; display: flex; justify-content: center; align-items: center; margin: 0; }
@@ -53,13 +53,13 @@
     <div class="fighter-area">
         <div class="fighter">
             <span class="emoji">🧙</span>
-            <div class="label">你的数字</div>
+            <div class="label" id="playerLabel">你的数字</div>
             <div class="value player-value" id="playerNum">1</div>
         </div>
         <div class="vs-badge">⚡</div>
         <div class="fighter">
             <span class="emoji">👹</span>
-            <div class="label">守关者</div>
+            <div class="label" id="bossLabel">守关者</div>
             <div class="value boss-value" id="bossNum">30</div>
         </div>
     </div>
@@ -68,12 +68,111 @@
 
     <div class="log-box" id="logMsg">🃏 选择一张卡牌来运算...</div>
     
-    <button class="btn-challenge" id="challengeBtn" onclick="challengeBoss()">⚔️ 挑战守关者</button>
+    <button class="btn-challenge" id="challengeBtn">⚔️ 挑战守关者</button>
     <div class="result-msg" id="resultMsg"></div>
-    <button class="btn-reset" onclick="resetGame()">🔄 重开一局</button>
+    <button class="btn-reset" id="resetBtn">🔄 重开一局</button>
 </div>
 
 <script>
+    // ---------- 🌍 第一步：多语言翻译表 (新增) ----------
+    const translations = {
+        en: {
+            title: 'Number Ladder',
+            playerLabel: 'Your Number',
+            bossLabel: 'Boss',
+            turn: 'Turn',
+            add: 'Add',
+            mul: 'Multiply',
+            sub: 'Subtract',
+            challenge: '⚔️ Challenge Boss',
+            reset: '🔄 New Game',
+            logDefault: '🃏 Pick a card...',
+            used: 'You used',
+            bossGrew: 'Boss grew by',
+            loseHeart: 'Lost 1 heart!',
+            remainHeart: 'remaining',
+            win: '🎉 Victory',
+            nextLevel: 'Next Level!',
+            fail: '💀 Failed',
+            loseHeartPunish: 'Lost 1 heart!',
+            bossCounter: 'Boss counterattacks! +5',
+            gameOver: '💀 Hearts broken... Click "New Game"',
+            newGame: '🔄 New game, good luck!',
+            heartFull: 'Perfect! Hearts full!'
+        },
+        zh: {
+            title: '数字阶梯',
+            playerLabel: '你的数字',
+            bossLabel: '守关者',
+            turn: '回合',
+            add: '加法',
+            mul: '乘法',
+            sub: '减法',
+            challenge: '⚔️ 挑战守关者',
+            reset: '🔄 重开一局',
+            logDefault: '🃏 选择一张卡牌来运算...',
+            used: '你使用了',
+            bossGrew: 'BOSS 提升了',
+            loseHeart: '失去1颗心！',
+            remainHeart: '剩余',
+            win: '🎉 胜利',
+            nextLevel: '进入下一关！',
+            fail: '💀 挑战失败',
+            loseHeartPunish: '失去一颗心！',
+            bossCounter: 'BOSS 反击！额外增长 5 点',
+            gameOver: '💀 心已碎... 点击"重开一局"',
+            newGame: '🔄 新的一局，加油！',
+            heartFull: '完美！心已满！'
+        },
+        ko: {
+            title: '숫자 사다리',
+            playerLabel: '내 숫자',
+            bossLabel: '보스',
+            turn: '턴',
+            add: '덧셈',
+            mul: '곱셈',
+            sub: '뺄셈',
+            challenge: '⚔️ 보스 도전',
+            reset: '🔄 새 게임',
+            logDefault: '🃏 카드를 선택하세요...',
+            used: '사용함',
+            bossGrew: '보스 증가',
+            loseHeart: '하트 1개 손실!',
+            remainHeart: '남음',
+            win: '🎉 승리',
+            nextLevel: '다음 레벨!',
+            fail: '💀 실패',
+            loseHeartPunish: '하트 1개 손실!',
+            bossCounter: '보스 반격! +5',
+            gameOver: '💀 하트가 깨졌습니다... "새 게임" 클릭',
+            newGame: '🔄 새 게임, 행운을 빌어요!',
+            heartFull: '완벽! 하트 가득!'
+        }
+    };
+
+    // ---------- 🌍 第二步：自动识别 Parrot Chat 传来的语言 (新增) ----------
+    function resolveLocale() {
+        // 1. 从 URL 参数获取 (首次加载)
+        const q = new URLSearchParams(location.search).get('locale');
+        if (q) return q;
+        // 2. 从 Parrot 全局变量获取 (页面跳转后)
+        if (window.__parrot && window.__parrot.locale) return window.__parrot.locale;
+        // 3. 默认英文
+        return 'en';
+    }
+
+    let rawLang = resolveLocale();
+    // 简化语言代码 (例如 zh-CN -> zh, ko-KR -> ko)
+    let lang = 'en';
+    if (rawLang.startsWith('zh')) lang = 'zh';
+    else if (rawLang.startsWith('ko')) lang = 'ko';
+    else lang = 'en';
+
+    // 翻译函数
+    function t(key) {
+        return translations[lang]?.[key] || translations['en'][key];
+    }
+
     // ---------- 游戏数据 ----------
     let player = 1;
     let boss = 30;
@@ -83,6 +182,7 @@
     let comboCount = 0;
     let gameOver = false;
 
+    // DOM 元素
     const playerEl = document.getElementById('playerNum');
     const bossEl = document.getElementById('bossNum');
     const heartEl = document.getElementById('heartDisplay');
@@ -92,6 +192,10 @@
     const comboEl = document.getElementById('comboDisplay');
     const statusBar = document.getElementById('statusBar');
     const cardContainer = document.getElementById('cardContainer');
+    const challengeBtn = document.getElementById('challengeBtn');
+    const resetBtn = document.getElementById('resetBtn');
+    const playerLabel = document.getElementById('playerLabel');
+    const bossLabel = document.getElementById('bossLabel');
 
     function rand(min, max) { return Math.floor(Math.random() * (max - min + 1)) + min; }
 
@@ -100,27 +204,40 @@
         setTimeout(() => statusBar.classList.remove('flash'), 150);
     }
 
-    // 红心抖动特效
     function shakeHeart() {
         heartEl.classList.remove('heart-shake');
         void heartEl.offsetWidth;
         heartEl.classList.add('heart-shake');
     }
 
+    
     function updateUI() {
         playerEl.innerText = player;
         bossEl.innerText = boss;
+        
+        // 红心
         let heartStr = '';
         for (let i = 0; i < 3; i++) {
             heartStr += (i < hearts) ? '❤️' : '🖤';
         }
         heartEl.innerText = heartStr;
-        turnEl.innerText = `回合 ${turn}`;
+        
+        // 回合 (使用翻译)
+        turnEl.innerText = t('turn') + ' ' + turn;
+        
+        // 连击
         if (comboCount >= 2) {
             comboEl.innerHTML = `<span class="combo-indicator">⚡ ${comboCount}连击</span>`;
         } else {
             comboEl.innerHTML = '';
         }
+
+        // 按钮文字 (使用翻译)
+        challengeBtn.innerText = t('challenge');
+        resetBtn.innerText = t('reset');
+        playerLabel.innerText = t('playerLabel');
+        bossLabel.innerText = t('bossLabel');
+        document.title = t('title');
     }
 
     function generateCards() {
@@ -128,9 +245,9 @@
         let mulVal = rand(2, 4);
         let subVal = rand(1, 8);
         let cards = [
-            { op: 'add', val: addVal, symbol: '+', label: '加法' },
-            { op: 'mul', val: mulVal, symbol: '×', label: '乘法' },
-            { op: 'sub', val: subVal, symbol: '−', label: '减法' }
+            { op: 'add', val: addVal, symbol: '+', label: t('add') },
+            { op: 'mul', val: mulVal, symbol: '×', label: t('mul') },
+            { op: 'sub', val: subVal, symbol: '−', label: t('sub') }
         ];
         for (let i = cards.length - 1; i > 0; i--) {
             const j = Math.floor(Math.random() * (i + 1));
@@ -152,7 +269,7 @@
             `;
             div.addEventListener('click', () => {
                 if (gameOver) {
-                    logEl.innerText = '⛔ 游戏已结束，请点击"重开一局"';
+                    logEl.innerText = t('gameOver');
                     return;
                 }
                 playCard(card.op, card.val);
@@ -161,7 +278,6 @@
         });
     }
 
-    // ----- 核心：扣血函数（带特效） -----
     function loseHeart() {
         hearts--;
         if (hearts < 0) hearts = 0;
@@ -169,14 +285,14 @@
         updateUI();
         if (hearts === 0) {
             gameOver = true;
-            logEl.innerText = '💀 心已碎... 点击"重开一局"';
-            resultEl.innerText = '💀 游戏结束';
+            logEl.innerText = t('gameOver');
+            resultEl.innerText = '💀 ' + t('gameOver');
             resultEl.style.color = '#ff4757';
             document.querySelectorAll('.card').forEach(c => c.classList.add('disabled-card'));
         }
     }
 
-    // ----- 打出卡牌 -----
+    // ----- 打出卡牌 (日志也改用翻译) -----
     function playCard(op, val) {
         if (gameOver) return;
 
@@ -196,23 +312,22 @@
         lastOp = op;
 
         let actualVal = Math.round(val * comboBonus);
+        let opName = t(op);
         switch(op) {
             case 'add': player = player + actualVal; logText += ` ${oldPlayer} + ${actualVal} = ${player}`; break;
             case 'mul': player = player * actualVal; logText += ` ${oldPlayer} × ${actualVal} = ${player}`; break;
             case 'sub': player = player - actualVal; logText += ` ${oldPlayer} − ${actualVal} = ${player}`; break;
         }
 
-        // 边界保护 & 扣血条件1：归零
         let isLostHeart = false;
         if (player < 1) {
             player = 1;
-            loseHeart(); // 扣一颗心
+            loseHeart();
             isLostHeart = true;
-            logText += ` 💔归零扣血`;
+            logText += ` 💔${t('loseHeart')}`;
         }
         if (player > 99999) player = 99999;
 
-        // BOSS成长
         let bossGrow = rand(1, 5);
         boss += bossGrow;
         turn++;
@@ -220,43 +335,39 @@
         updateUI();
         flashStatus();
 
-        // 日志显示
+        // 使用翻译拼接日志
         if (isLostHeart) {
-            logEl.innerText = `🎴 你使用了 ${op==='add'?'加法':op==='mul'?'乘法':'减法'} | ${logText} | 👹 BOSS 提升了 ${bossGrow} (剩余 ${hearts} 心)`;
+            logEl.innerText = `🎴 ${t('used')} ${opName} | ${logText} | 👹 ${t('bossGrew')} ${bossGrow} (${t('remainHeart')} ${hearts} ${t('loseHeart')})`;
         } else {
-            logEl.innerText = `🎴 你使用了 ${op==='add'?'加法':op==='mul'?'乘法':'减法'} | ${logText} | 👹 BOSS 提升了 ${bossGrow}`;
+            logEl.innerText = `🎴 ${t('used')} ${opName} | ${logText} | 👹 ${t('bossGrew')} ${bossGrow}`;
         }
         resultEl.innerText = '';
 
-        // 刷新下一轮手牌
         if (!gameOver) {
             let newCards = generateCards();
             renderCards(newCards);
         }
     }
 
-    // ----- 挑战BOSS（扣血条件2：挑战失败） -----
+    // ----- 挑战BOSS (日志翻译) -----
     function challengeBoss() {
         if (gameOver) {
-            alert('游戏已结束，请重开！');
+            alert(t('gameOver'));
             return;
         }
 
-        turn++; // 挑战也算一次行动
+        turn++;
 
         if (player > boss) {
-            // 胜利
             resultEl.style.color = '#2ed573';
-            resultEl.innerText = `🎉 胜利！ ${player} > ${boss} ！进入下一关！`;
-            // 奖励：恢复一颗心（上限3）
+            resultEl.innerText = `${t('win')}！ ${player} > ${boss} ！${t('nextLevel')}`;
             if (hearts < 3) {
                 hearts++;
                 updateUI();
-                logEl.innerText = `✨ 奖励！恢复1颗心！ (当前 ${hearts} 心)`;
+                logEl.innerText = `✨ ${t('heartFull')} (${t('remainHeart')} ${hearts})`;
             } else {
-                logEl.innerText = `✨ 完美胜利！心已满！`;
+                logEl.innerText = `✨ ${t('heartFull')}`;
             }
-            // 重置关卡
             player = 1;
             boss = rand(20, 60);
             turn = 0;
@@ -265,24 +376,19 @@
             gameOver = false;
             updateUI();
             flashStatus();
-            // 刷新手牌
             let newCards = generateCards();
             renderCards(newCards);
             document.querySelectorAll('.card').forEach(c => c.classList.remove('disabled-card'));
         } else {
-            // 【重点】失败惩罚：扣血！
             resultEl.style.color = '#ff6b81';
-            resultEl.innerText = `💀 挑战失败！ ${player} < ${boss} ，失去一颗心！`;
+            resultEl.innerText = `${t('fail')}！ ${player} < ${boss} ，${t('loseHeartPunish')}`;
             
-            // 扣血
             loseHeart();
-            // BOSS额外增长
             boss += 5;
             updateUI();
             flashStatus();
-            logEl.innerText = `😤 BOSS 反击！额外增长了 5 点 (当前 ${boss})，剩余 ${hearts} 心`;
+            logEl.innerText = `😤 ${t('bossCounter')} (${t('remainHeart')} ${hearts})`;
 
-            // 如果扣血后游戏结束，禁用卡片
             if (gameOver) {
                 document.querySelectorAll('.card').forEach(c => c.classList.add('disabled-card'));
             }
@@ -298,15 +404,20 @@
         comboCount = 0;
         gameOver = false;
         resultEl.style.color = '#eee';
-        resultEl.innerText = '🔄 新的一局，加油！';
+        resultEl.innerText = t('newGame');
         updateUI();
-        logEl.innerText = '🃏 选择一张卡牌开始...';
+        logEl.innerText = t('logDefault');
         let newCards = generateCards();
         renderCards(newCards);
         document.querySelectorAll('.card').forEach(c => c.classList.remove('disabled-card'));
         flashStatus();
     }
 
+
+    challengeBtn.onclick = challengeBoss;
+    resetBtn.onclick = resetGame;
+
+    
     resetGame();
 </script>
 </body>
